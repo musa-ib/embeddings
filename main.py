@@ -3,7 +3,21 @@ import numpy as np
 import streamlit as st
 from numpy.linalg import norm
 import plotly.express as px
-import csv
+
+
+
+try:
+    man_dedupe = pd.read_csv('manual_dedupe.csv')
+except FileNotFoundError:
+    pd.DataFrame(columns=['Names', 'Associated Names','Review']).to_csv('manual_dedupe.csv', index=False)
+
+
+man_dedupe = pd.read_csv('manual_dedupe.csv')
+def find_in_associated_names(name):
+    for i in man_dedupe['Associated Names']:
+        if name in i:
+            return True
+    return False
 
 # Load data
 df = pd.read_csv("joined_deduped_brokers.csv")
@@ -18,10 +32,28 @@ st.sidebar.header("Controls")
 threshold = st.sidebar.slider("Cosine Similarity Threshold", min_value=0.0, max_value=1.0, value=0.7, step=0.01)
 
 # Dropdown for number of top similar companies
-top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50], index=1)
+top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50], index=4)
 
-# Select a company
-selected_name = st.selectbox("Select a name:", names)
+
+
+formatted_options = []
+for name in names:
+    if name in man_dedupe["Names"].values or find_in_associated_names(name):
+        formatted_options.append(f" {name}  🟢")  # Green circle prefix for highlighted names
+    else:
+        formatted_options.append(name)
+
+# Create a mapping to get original name from formatted option
+option_to_name = {}
+for i, name in enumerate(names):
+    option_to_name[formatted_options[i]] = name
+
+# Updated selectbox with formatted options
+selected_option = st.selectbox("Select a name:", formatted_options)
+selected_name = option_to_name[selected_option]
+
+
+# selected_name = st.selectbox("Select a name:", names)
 index = names.index(selected_name)
 embed = embeddings[index]
 
@@ -36,19 +68,31 @@ top_indices = filtered_indices[:top_n]
 
 col1 , col2 = st.columns(2)
 
+
+
+
 # Display results and add checkboxes
 with col1:
     st.subheader(f"Top {len(top_indices)} Similar Companies with Similarity > {threshold}")
 
     selected_names_via_checkbox=[]
+    name_for_review = []
+
+
     if top_indices:
         for i in top_indices:
-            if st.checkbox(f"**{names[i]}** : {cos_sim[i]:.4f}", key=names[i]):  # The key ensures each checkbox is unique
-                selected_names_via_checkbox.append(names[i])
-            # st.write(f"**{names[i]}** : {cos_sim[i]:.4f}")
-    else:
-        st.write("No companies found with similarity above the threshold.")
-
+            col_a, col_b = st.columns([1, 4])
+            
+            with col_a:
+                # Second checkbox (you can customize the label/purpose)
+                second_check = st.checkbox("Review", key=f"second_{names[i]}", value=False)
+                if second_check:
+                    name_for_review.append(names[i])
+            
+            with col_b:
+                # Original checkbox
+                if st.checkbox(f"**{names[i]}** : {cos_sim[i]:.4f}", key=names[i], value=True):
+                    selected_names_via_checkbox.append(names[i])
 
 
 # === Visualization using X_embedded ===
@@ -126,19 +170,7 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # ==  Find Selected name in Associated Names ==
-try:
-    df = pd.read_csv('manual_dedupe.csv')
-except FileNotFoundError:
-    pd.DataFrame(columns=['Names', 'Associated Names']).to_csv('manual_dedupe.csv', index=False)
 
-
-df = pd.read_csv('manual_dedupe.csv')
-def find_in_associated_names(name):
-    
-    for i in df['Associated Names']:
-        if name in i:
-            return True
-    return False
 
 with col2:
     if selected_names_via_checkbox:
@@ -149,10 +181,10 @@ with col2:
         if not selected_names_via_checkbox:
             st.warning("Please select at least one company to add.")
         else:
-            if selected_name in df['Names'].values or find_in_associated_names(selected_name):
+            if selected_name in man_dedupe['Names'].values or find_in_associated_names(selected_name):
                 st.write(f"**{selected_name}** is already in the manual dedupe list.")
             else:
-                new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox]})
+                new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox],'Review': [name_for_review]})
                 new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
                 
                 st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
