@@ -3,6 +3,7 @@ import numpy as np
 import streamlit as st
 from numpy.linalg import norm
 import plotly.express as px
+import csv
 
 # Load data
 df = pd.read_csv("joined_deduped_brokers.csv")
@@ -33,13 +34,22 @@ sorted_indices = sorted_indices[sorted_indices != index]  # Remove selected comp
 filtered_indices = [i for i in sorted_indices if cos_sim[i] >= threshold]
 top_indices = filtered_indices[:top_n]
 
-# Display results
-st.subheader(f"Top {len(top_indices)} Similar Companies with Similarity > {threshold}")
-if top_indices:
-    for i in top_indices:
-        st.write(f"**{names[i]}** : {cos_sim[i]:.4f}")
-else:
-    st.write("No companies found with similarity above the threshold.")
+col1 , col2 = st.columns(2)
+
+# Display results and add checkboxes
+with col1:
+    st.subheader(f"Top {len(top_indices)} Similar Companies with Similarity > {threshold}")
+
+    selected_names_via_checkbox=[]
+    if top_indices:
+        for i in top_indices:
+            if st.checkbox(f"**{names[i]}** : {cos_sim[i]:.4f}", key=names[i]):  # The key ensures each checkbox is unique
+                selected_names_via_checkbox.append(names[i])
+            # st.write(f"**{names[i]}** : {cos_sim[i]:.4f}")
+    else:
+        st.write("No companies found with similarity above the threshold.")
+
+
 
 # === Visualization using X_embedded ===
 st.subheader("Company Embeddings Visualization")
@@ -78,8 +88,8 @@ fig = px.scatter(
     hover_name="name",
     hover_data={"similarity": ":.4f"},
     color_discrete_map=color_map,
-    title=f"Selected: {selected_name}",
-    labels={"x": "Dimension 1", "y": "Dimension 2"}
+    title=f"Selected: {selected_name}"
+    # labels={"x": "Dimension 1", "y": "Dimension 2"}
 )
 
 # Update marker properties
@@ -114,3 +124,34 @@ fig.update_layout(
 
 # Show the plot
 st.plotly_chart(fig, use_container_width=True)
+
+# ==  Find Selected name in Associated Names ==
+try:
+    df = pd.read_csv('manual_dedupe.csv')
+except FileNotFoundError:
+    pd.DataFrame(columns=['Names', 'Associated Names']).to_csv('manual_dedupe.csv', index=False)
+
+
+df = pd.read_csv('manual_dedupe.csv')
+def find_in_associated_names(name):
+    
+    for i in df['Associated Names']:
+        if name in i:
+            return True
+    return False
+
+with col2:
+    if selected_names_via_checkbox:
+        st.write("### Selected Companies:" , selected_names_via_checkbox)
+
+
+    if st.button("Add to Manual Dedupe List"):
+        if not selected_names_via_checkbox:
+            st.warning("Please select at least one company to add.")
+        else:
+            if selected_name in df['Names'].values or find_in_associated_names(selected_name):
+                st.write(f"**{selected_name}** is already in the manual dedupe list.")
+            else:
+                new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox]})
+                new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
+                st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
