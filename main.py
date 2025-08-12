@@ -154,4 +154,14 @@ with col2:
             else:
                 new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox]})
                 new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
+                
                 st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
+
+csv_file_path = 'manual_dedupe.csv'
+with open(csv_file_path, 'rb') as f:
+    st.download_button(
+        label="Download CSV", 
+        data=f, 
+        file_name="manual_dedupe.csv", 
+        mime="text/csv"
+    )
