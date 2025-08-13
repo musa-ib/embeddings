@@ -32,7 +32,7 @@ st.sidebar.header("Controls")
 threshold = st.sidebar.slider("Cosine Similarity Threshold", min_value=0.0, max_value=1.0, value=0.7, step=0.01)
 
 # Dropdown for number of top similar companies
-top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50,75,100,200,250,300,350,len(names)], index=4)
+top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50,75,100,200,250,300,350,400,500,len(names)], index=4)
 
 
 
