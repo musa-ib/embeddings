@@ -32,17 +32,19 @@ st.sidebar.header("Controls")
 threshold = st.sidebar.slider("Cosine Similarity Threshold", min_value=0.0, max_value=1.0, value=0.7, step=0.01)
 
 # Dropdown for number of top similar companies
-top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50,75,100,200,250,300,350,400,500,len(names)], index=4)
+top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50,75,100,200,250,300,350,400,500,600,700,1000,len(names)], index=4)
 
 
 
 formatted_options = []
+c = 0
 for name in names:
     if name in man_dedupe["Names"].values or find_in_associated_names(name):
         formatted_options.append(f" {name}  🟢")  # Green circle prefix for highlighted names
+        c+=1
     else:
         formatted_options.append(name)
-
+print(c)
 # Create a mapping to get original name from formatted option
 option_to_name = {}
 for i, name in enumerate(names):
