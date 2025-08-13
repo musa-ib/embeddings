@@ -71,8 +71,6 @@ top_indices = filtered_indices[:top_n]
 col1 , col2 = st.columns(2)
 
 
-
-
 # Display results and add checkboxes
 with col1:
     st.subheader(f"Top {len(top_indices)} Similar Companies with Similarity > {threshold}")
@@ -180,16 +178,14 @@ with col2:
 
 
     if st.button("Add to Manual Dedupe List"):
-        if not selected_names_via_checkbox:
-            st.warning("Please select at least one company to add.")
+        
+        if selected_name in man_dedupe['Names'].values or find_in_associated_names(selected_name):
+            st.write(f"**{selected_name}** is already in the manual dedupe list.")
         else:
-            if selected_name in man_dedupe['Names'].values or find_in_associated_names(selected_name):
-                st.write(f"**{selected_name}** is already in the manual dedupe list.")
-            else:
-                new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox],'Review': [name_for_review]})
-                new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
-                
-                st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
+            new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox],'Review': [name_for_review]})
+            new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
+            
+            st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
 
 csv_file_path = 'manual_dedupe.csv'
 with open(csv_file_path, 'rb') as f:
