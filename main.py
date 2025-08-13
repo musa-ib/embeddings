@@ -38,12 +38,14 @@ top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", optio
 
 formatted_options = []
 counter = 0
+names2 = []
 for name in names:
     if name in man_dedupe["Names"].values or find_in_associated_names(name):
         formatted_options.append(f" {name}  🟢")  # Green circle prefix for highlighted names
         counter+=1
     else:
         formatted_options.append(name)
+        names2.append(name)
 # Create a mapping to get original name from formatted option
 option_to_name = {}
 for i, name in enumerate(names):
@@ -51,7 +53,7 @@ for i, name in enumerate(names):
 
 st.write(f"Compaies Added {counter}")
 # Updated selectbox with formatted options
-selected_option = st.selectbox("Select a name:", formatted_options)
+selected_option = st.selectbox("Select a name:", names2)
 selected_name = option_to_name[selected_option]
 
 
