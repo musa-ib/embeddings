@@ -50,7 +50,7 @@ top_n = st.sidebar.selectbox(
     options=[10, 20, 30, 40, 50, 75, 100, 200, 250, 300, 350, 400, 500, 600, 700, 1000, len(names)],
     index=4
 )
-st.write(len(names_for_selection))
+st.write(len(names)-len(names_for_selection))
 # ====== Select Company ======
 selected_name = st.selectbox("Select a name:", names_for_selection)
 index = names.index(selected_name)
