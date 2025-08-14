@@ -3,197 +3,136 @@ import numpy as np
 import streamlit as st
 from numpy.linalg import norm
 import plotly.express as px
+import ast  # for parsing lists from CSV
 
+# ====== Loaders with caching ======
+@st.cache_data
+def load_manual_dedupe(path="manual_dedupe.csv"):
+    try:
+        return pd.read_csv(path)
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=["Names", "Associated Names", "Review"])
+        df.to_csv(path, index=False)
+        return df
 
+@st.cache_data
+def load_main_data():
+    df = pd.read_csv("joined_deduped_brokers.csv")
+    embeddings = np.load("embeddings_numpy.npy")
+    X_embedded = np.load("X_embedded_tsne.npy")
+    return df, embeddings, X_embedded
 
-try:
-    man_dedupe = pd.read_csv('manual_dedupe.csv')
-except FileNotFoundError:
-    pd.DataFrame(columns=['Names', 'Associated Names','Review']).to_csv('manual_dedupe.csv', index=False)
+# ====== Data Load ======
+man_dedupe = load_manual_dedupe()
+df, embeddings, X_embedded = load_main_data()
+names = df["Company_Name"].tolist()
 
+# Parse Associated Names column into lists
+associated_lists = man_dedupe["Associated Names"].apply(
+    lambda x: ast.literal_eval(x) if pd.notna(x) and isinstance(x, str) else []
+)
 
-man_dedupe = pd.read_csv('manual_dedupe.csv')
-def find_in_associated_names(name):
-    for i in man_dedupe['Associated Names']:
-        if name in i:
-            return True
-    return False
+# Check if a name exists in any Associated Names list
+def is_name_in_associated(name):
+    return any(name in sublist for sublist in associated_lists)
 
-# Load data
-df = pd.read_csv("joined_deduped_brokers.csv")
-names = df['Company_Name'].tolist()
-embeddings = np.load("embeddings_numpy.npy")  
-X_embedded = np.load('X_embedded_tsne.npy') 
+# Mask for already deduped companies
+already_in_dedupe = df["Company_Name"].isin(man_dedupe["Names"]) | df["Company_Name"].apply(is_name_in_associated)
 
-# Sidebar Controls
+# Filter names for selection
+names_for_selection = df.loc[~already_in_dedupe, "Company_Name"].tolist()
+
+# ====== Sidebar Controls ======
 st.sidebar.header("Controls")
+threshold = st.sidebar.slider("Cosine Similarity Threshold", 0.0, 1.0, 0.7, 0.01)
+top_n = st.sidebar.selectbox(
+    "Number of Top Similar Companies to Display",
+    options=[10, 20, 30, 40, 50, 75, 100, 200, 250, 300, 350, 400, 500, 600, 700, 1000, len(names)],
+    index=4
+)
 
-# Cosine similarity threshold slider
-threshold = st.sidebar.slider("Cosine Similarity Threshold", min_value=0.0, max_value=1.0, value=0.7, step=0.01)
-
-# Dropdown for number of top similar companies
-top_n = st.sidebar.selectbox("Number of Top Similar Companies to Display", options=[10, 20, 30, 40, 50,75,100,200,250,300,350,400,500,600,700,1000,len(names)], index=4)
-
-
-
-formatted_options = []
-counter = 0
-names2 = []
-for name in names:
-    if name in man_dedupe["Names"].values or find_in_associated_names(name):
-        formatted_options.append(f" {name}  🟢")  # Green circle prefix for highlighted names
-        counter+=1
-    else:
-        formatted_options.append(name)
-        names2.append(name)
-# Create a mapping to get original name from formatted option
-option_to_name = {}
-for i, name in enumerate(names):
-    option_to_name[formatted_options[i]] = name
-
-st.write(f"Compaies Added {counter}")
-# Updated selectbox with formatted options
-selected_option = st.selectbox("Select a name:", names2)
-selected_name = option_to_name[selected_option]
-
-
-# selected_name = st.selectbox("Select a name:", names)
+# ====== Select Company ======
+selected_name = st.selectbox("Select a name:", names_for_selection)
 index = names.index(selected_name)
 embed = embeddings[index]
 
-# Compute cosine similarities
-cos_sim = np.array([np.dot(i, embed) / (norm(i) * norm(embed)) for i in embeddings])
+# ====== Cosine Similarity ======
+norms = np.linalg.norm(embeddings, axis=1) * norm(embed)
+cos_sim = np.dot(embeddings, embed) / norms
 
-# Sort and filter
+# Filter top matches (excluding self and already-deduped)
 sorted_indices = np.argsort(-cos_sim)
-sorted_indices = sorted_indices[sorted_indices != index]  # Remove selected company
-filtered_indices = [i for i in sorted_indices if cos_sim[i] >= threshold]
-top_indices = filtered_indices[:top_n]
+sorted_indices = sorted_indices[(sorted_indices != index) & (~already_in_dedupe.values[sorted_indices])]
+filtered_indices = sorted_indices[cos_sim[sorted_indices] >= threshold][:top_n]
 
-col1 , col2 = st.columns(2)
+# ====== Layout ======
+col1, col2 = st.columns(2)
 
-
-# Display results and add checkboxes
+# ====== Column 1: Similar companies ======
 with col1:
-    st.subheader(f"Top {len(top_indices)} Similar Companies with Similarity > {threshold}")
-
-    selected_names_via_checkbox=[]
+    st.subheader(f"Top {len(filtered_indices)} Similar Companies (>{threshold})")
+    selected_names_via_checkbox = []
     name_for_review = []
 
+    for i in filtered_indices:
+        col_a, col_b = st.columns([1, 4])
+        with col_a:
+            if st.checkbox("Review", key=f"review_{names[i]}"):
+                name_for_review.append(names[i])
+        with col_b:
+            if st.checkbox(f"**{names[i]}** : {cos_sim[i]:.4f}", key=f"select_{names[i]}", value=True):
+                selected_names_via_checkbox.append(names[i])
 
-    if top_indices:
-        for i in top_indices:
-            col_a, col_b = st.columns([1, 4])
-            
-            with col_a:
-                # Second checkbox (you can customize the label/purpose)
-                second_check = st.checkbox("Review", key=f"second_{names[i]}", value=False)
-                if second_check:
-                    name_for_review.append(names[i])
-            
-            with col_b:
-                # Original checkbox
-                if st.checkbox(f"**{names[i]}** : {cos_sim[i]:.4f}", key=names[i], value=True):
-                    selected_names_via_checkbox.append(names[i])
+# ====== Visualization ======
+# plot_df = pd.DataFrame(X_embedded, columns=["x", "y"])
+# plot_df["name"] = names
+# plot_df["similarity"] = cos_sim
+# plot_df["category"] = "Other"
+# plot_df["opacity"] = 0.5
 
+# # Highlight selected and similar companies
+# plot_df.loc[index, ["category", "opacity"]] = ["Selected", 1.0]
+# plot_df.loc[filtered_indices, ["category", "opacity"]] = ["Similar", 0.9]
 
-# === Visualization using X_embedded ===
-st.subheader("Company Embeddings Visualization")
+# fig = px.scatter(
+#     plot_df,
+#     x="x", y="y",
+#     color="category",
+#     hover_name="name",
+#     hover_data={"similarity": ":.4f"},
+#     color_discrete_map={"Selected": "red", "Similar": "green", "Other": "lightgrey"},
+#     width=800, height=600,
+#     title=f"Selected: {selected_name}"
+# )
 
-# Create a DataFrame for plotting
-plot_df = pd.DataFrame(X_embedded, columns=["x", "y"])
-plot_df["name"] = names
-plot_df["similarity"] = cos_sim
-plot_df["category"] = "Other"
-plot_df["opacity"] = 0.5  # Default opacity
+# fig.update_traces(marker=dict(size=6, line=dict(width=0.5, color="DarkSlateGrey")))
+# fig.for_each_trace(
+#     lambda t: t.update(marker=dict(size=12, symbol=103, line=dict(width=2, color="black"))) if t.name == "Selected" else None
+# )
+# fig.for_each_trace(
+#     lambda t: t.update(marker=dict(size=10, symbol=205)) if t.name == "Similar" else None
+# )
 
-# Mark selected company (Red)
-plot_df.loc[index, "category"] = "Selected"
-plot_df.loc[index, "opacity"] = 1.0
+# st.plotly_chart(fig, use_container_width=True)
 
-# Mark top similar companies (Green)
-if top_indices:
-    plot_df.loc[top_indices, "category"] = "Similar"
-    plot_df.loc[top_indices, "opacity"] = 0.9
-
-# Define color mapping
-color_map = {
-    "Selected": "red",
-    "Similar": "green", 
-    "Other": "lightgrey"
-}
-
-# Create the plot
-fig = px.scatter(
-    plot_df,
-    x="x",
-    y="y",
-    width=800,
-    height=600,
-    color="category",
-    hover_name="name",
-    hover_data={"similarity": ":.4f"},
-    color_discrete_map=color_map,
-    title=f"Selected: {selected_name}"
-    # labels={"x": "Dimension 1", "y": "Dimension 2"}
-)
-
-# Update marker properties
-fig.update_traces(
-    marker=dict(
-        size=2,
-        line=dict(width=0.5, color='DarkSlateGrey')
-    )
-)
-
-# Make selected company larger and more prominent
-# update selected marker as +
-
-for i, trace in enumerate(fig.data):
-    if trace.name == "Selected":
-        trace.update(marker=dict(size=12,symbol = 103,line=dict(width=2, color='black')))
-    elif trace.name == "Similar":
-        trace.update(marker=dict(size=10,symbol = 205))
-
-# Update layout
-fig.update_layout(
-    showlegend=True,
-    legend=dict(
-        yanchor="top",
-        y=0.99,
-        xanchor="left",
-        x=0.01,
-        bgcolor="rgba(255,255,255,0.8)"
-    ),
-    height=600
-)
-
-# Show the plot
-st.plotly_chart(fig, use_container_width=True)
-
-# ==  Find Selected name in Associated Names ==
-
-
+# ====== Column 2: Save results ======
 with col2:
     if selected_names_via_checkbox:
-        st.write("### Selected Companies:" , selected_names_via_checkbox)
-
+        st.write("### Selected Companies:", selected_names_via_checkbox)
 
     if st.button("Add to Manual Dedupe List"):
-        
-        if selected_name in man_dedupe['Names'].values or find_in_associated_names(selected_name):
-            st.write(f"**{selected_name}** is already in the manual dedupe list.")
+        if selected_name in man_dedupe["Names"].values or is_name_in_associated(selected_name):
+            st.warning(f"**{selected_name}** is already in the manual dedupe list.")
         else:
-            new_data_point = pd.DataFrame({'Names': [selected_name], 'Associated Names': [selected_names_via_checkbox],'Review': [name_for_review]})
-            new_data_point.to_csv('manual_dedupe.csv', mode='a', index=False, header=False)
-            
-            st.success(f"**{selected_name}** and its associated names have been added to the manual dedupe list.")
+            new_data = pd.DataFrame({
+                "Names": [selected_name],
+                "Associated Names": [selected_names_via_checkbox],
+                "Review": [name_for_review]
+            })
+            new_data.to_csv("manual_dedupe.csv", mode="a", index=False, header=False)
+            st.success(f"**{selected_name}** and its associated names have been added.")
+        
 
-csv_file_path = 'manual_dedupe.csv'
-with open(csv_file_path, 'rb') as f:
-    st.download_button(
-        label="Download CSV", 
-        data=f, 
-        file_name="manual_dedupe.csv", 
-        mime="text/csv"
-    )
+# ====== Download button ======
+with open("manual_dedupe.csv", "rb") as f:
+    st.download_button("Download CSV", f, "manual_dedupe.csv", "text/csv")
