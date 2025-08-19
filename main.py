@@ -6,6 +6,9 @@ import plotly.express as px
 import ast
 from sklearn.metrics.pairwise import cosine_similarity
 
+
+
+df_address = pd.read_csv("classified_comnpany_person_in_brokers.csv")
 # ====== Loaders with caching ======
 @st.cache_data
 def load_manual_dedupe(path="manual_dedupe.csv"):
@@ -57,6 +60,8 @@ names = df["Company_Name"].tolist()
 already_in_dedupe = df["Company_Name"].isin(dedupe_lookup)
 names_for_selection = df.loc[~already_in_dedupe, "Company_Name"].tolist()
 
+
+
 # ====== Sidebar Controls ======
 st.sidebar.header("Controls")
 threshold = st.sidebar.slider("Cosine Similarity Threshold", 0.0, 1.0, 0.7, 0.01)
@@ -90,7 +95,7 @@ def calculate_similarities(selected_name, _normalized_embeddings, _names, _dedup
     
     # Create boolean mask for valid candidates
     valid_mask = np.ones(len(_names), dtype=bool)
-    valid_mask[index] = False  # Exclude self
+    # valid_mask[index] = False  # Exclude self
     
     # Exclude already deduped companies
     for i, name in enumerate(_names):
@@ -147,7 +152,9 @@ with col1:
                     name_for_review.append(company_name)
             
             with col_b:
-                if st.checkbox(f"**{company_name}** : {similarity:.4f}", key=f"select_{idx}", value=True):
+                address = df_address[df_address["COMPANY_NAME"] == company_name]["STATE"].values
+                # print(company_name, address)
+                if st.checkbox(f"**{company_name}** : {similarity:.4f} Address :{address[0]}", key=f"select_{idx}", value=True):
                     selected_names_via_checkbox.append(company_name)
         
         # Submit button for the form
